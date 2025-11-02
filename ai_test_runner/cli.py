@@ -32,7 +32,7 @@ class AITestRunner:
         self.analyzer = DependencyAnalyzer(str(self.repo_path))
 
         # Create output directory
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         # Create test reports directory
         self.test_reports_dir.mkdir(parents=True, exist_ok=True)
 
@@ -72,12 +72,58 @@ class AITestRunner:
             test_file = self.tests_dir / f"{base_name}.c"
 
             if test_file.exists():
-                compilable_tests.append(test_file)
+                # Return just the base name without .c extension
+                test_name = test_file.stem
+                compilable_tests.append(test_name)
                 print(f"✅ Found compilable test: {test_file.name}")
             else:
                 print(f"⚠️  Test file not found: {test_file.name}")
 
         return compilable_tests
+
+    def run(self):
+        """Run the complete test execution pipeline"""
+        print("🚀 Starting AI Test Runner...")
+
+        # Find compilable tests
+        test_files = self.find_compilable_tests()
+        if not test_files:
+            print("❌ No compilable tests found")
+            return False
+
+        # Copy Unity framework
+        if not self.copy_unity_framework():
+            print("❌ Failed to setup Unity framework")
+            return False
+
+        # Create CMakeLists.txt
+        if not self.create_cmake_lists(test_files):
+            print("❌ Failed to create CMakeLists.txt")
+            return False
+
+        # Build tests
+        if not self.build_tests():
+            print("❌ Failed to build tests")
+            return False
+
+        # Run tests
+        test_results = self.run_tests()
+        if not test_results:
+            print("❌ No tests were executed")
+            return False
+
+        # Generate test reports
+        self.generate_test_reports(test_results)
+
+        # Generate coverage (optional)
+        self.generate_coverage()
+
+        # Summary
+        total_tests = len(test_results)
+        passed_tests = sum(1 for result in test_results if result['success'])
+        print(f"\n📊 Test Summary: {passed_tests}/{total_tests} test suites passed")
+
+        return passed_tests == total_tests
 
     def copy_unity_framework(self):
         """Copy or download Unity framework"""
@@ -932,13 +978,13 @@ Examples:
         print("  Ubuntu/Debian: sudo apt-get install cmake build-essential")
         print("  macOS: brew install cmake")
         print("  Windows: Install CMake (includes Ninja generator)")
-        return 1
+        sys.exit(1)
 
     # Run the test runner
     runner = AITestRunner(args.repo_path, args.output)
     success = runner.run()
 
-    return 0 if success else 1
+    sys.exit(0 if success else 1)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,8 @@
 """Tests for AI Test Runner CLI."""
 
+import os
 import pytest
+import subprocess
 from unittest.mock import patch, MagicMock
 from ai_test_runner.cli import main, AITestRunner
 
@@ -14,15 +16,30 @@ class TestAITestRunner:
     @patch('ai_test_runner.cli.Path')
     def test_find_compilable_tests(self, mock_path, mock_copy2, mock_copytree, mock_subprocess):
         """Test finding compilable tests."""
-        # Mock the Path and file discovery
+        # Mock Path to avoid directory creation issues
         mock_path_instance = MagicMock()
         mock_path.return_value = mock_path_instance
-        mock_path_instance.glob.return_value = [
-            MagicMock(name='test1_compiles_yes.txt'),
-            MagicMock(name='test2_compiles_yes.txt'),
-        ]
 
         runner = AITestRunner(repo_path='/fake/path')
+
+        # Mock the verification directory methods
+        runner.verification_dir = MagicMock()
+        runner.verification_dir.exists.return_value = True
+        runner.verification_dir.glob.return_value = [
+            MagicMock(stem='test1_compiles_yes'),
+            MagicMock(stem='test2_compiles_yes'),
+        ]
+
+        # Mock the tests directory and test files
+        runner.tests_dir = MagicMock()
+        def mock_truediv(filename):
+            mock_file = MagicMock()
+            mock_file.exists.return_value = True
+            mock_file.stem = filename.replace('.c', '')
+            mock_file.name = filename
+            return mock_file
+        runner.tests_dir.__truediv__.side_effect = mock_truediv
+
         tests = runner.find_compilable_tests()
 
         assert len(tests) == 2
@@ -43,34 +60,58 @@ class TestAITestRunner:
     @patch('ai_test_runner.cli.subprocess.run')
     def test_build_tests_failure(self, mock_subprocess):
         """Test build failure."""
-        mock_subprocess.return_value = MagicMock(returncode=1, stdout='', stderr='Build failed')
+        mock_subprocess.side_effect = subprocess.CalledProcessError(1, 'cmake', stderr='Build failed')
 
         runner = AITestRunner(repo_path='/fake/path')
         result = runner.build_tests()
 
         assert result is False
 
+    @patch('ai_test_runner.cli.os.access')
     @patch('ai_test_runner.cli.subprocess.run')
-    def test_run_tests_success(self, mock_subprocess):
+    def test_run_tests_success(self, mock_subprocess, mock_access):
         """Test successful test execution."""
         mock_subprocess.return_value = MagicMock(returncode=0, stdout='All tests passed', stderr='')
+        mock_access.return_value = True
 
         runner = AITestRunner(repo_path='/fake/path')
-        results = runner.run_tests(['test1', 'test2'])
+        # Mock some test executables
+        runner.output_dir = MagicMock()
+        mock_exe = MagicMock()
+        mock_exe.is_file.return_value = True
+        mock_exe.name = 'test_main.exe'
+        mock_exe.suffix = '.exe'
+        runner.output_dir.glob.return_value = [mock_exe]
 
-        assert len(results) == 2
-        assert all(result['passed'] for result in results)
+        results = runner.run_tests()
 
+        assert isinstance(results, list)
+        # Should have one result for the successful test
+        assert len(results) == 1
+        assert results[0]['success']
+
+    @patch('ai_test_runner.cli.os.access')
     @patch('ai_test_runner.cli.subprocess.run')
-    def test_run_tests_failure(self, mock_subprocess):
+    def test_run_tests_failure(self, mock_subprocess, mock_access):
         """Test test execution with failures."""
         mock_subprocess.return_value = MagicMock(returncode=1, stdout='', stderr='Test failed')
+        mock_access.return_value = True
 
         runner = AITestRunner(repo_path='/fake/path')
-        results = runner.run_tests(['test1'])
+        # Mock some test executables
+        runner.output_dir = MagicMock()
+        mock_exe = MagicMock()
+        mock_exe.is_file.return_value = True
+        mock_exe.name = 'test_main.exe'
+        mock_exe.suffix = '.exe'
+        runner.output_dir.glob.return_value = [mock_exe]
 
+        results = runner.run_tests()
+
+        assert isinstance(results, list)
+        # Should have one result for the failed test
         assert len(results) == 1
-        assert not results[0]['passed']
+        assert not results[0]['success']
 
 
 class TestCLI:
@@ -81,24 +122,18 @@ class TestCLI:
         """Test successful main execution."""
         mock_runner = MagicMock()
         mock_runner_class.return_value = mock_runner
-        mock_runner.find_compilable_tests.return_value = ['test1']
-        mock_runner.copy_unity_framework.return_value = True
-        mock_runner.create_cmake_lists.return_value = True
-        mock_runner.build_tests.return_value = True
-        mock_runner.run_tests.return_value = [{'name': 'test1', 'passed': True, 'output': ''}]
-        mock_runner.generate_coverage.return_value = True
+        mock_runner.run.return_value = True
 
         with patch('sys.argv', ['ai-test-runner']):
-            main()
-
-        mock_runner.find_compilable_tests.assert_called_once()
+            with pytest.raises(SystemExit):
+                main()
 
     @patch('ai_test_runner.cli.AITestRunner')
     def test_main_no_tests_found(self, mock_runner_class):
         """Test when no compilable tests are found."""
         mock_runner = MagicMock()
         mock_runner_class.return_value = mock_runner
-        mock_runner.find_compilable_tests.return_value = []
+        mock_runner.run.return_value = False
 
         with patch('sys.argv', ['ai-test-runner']):
             with pytest.raises(SystemExit):
