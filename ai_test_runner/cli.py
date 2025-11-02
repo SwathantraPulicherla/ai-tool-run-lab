@@ -156,30 +156,18 @@ class AITestRunner:
             test_name = os.path.splitext(os.path.basename(test_file))[0]
             executable_name = test_name
 
-            # --- INTELLIGENT SOURCE FILE SELECTION ---
+            # --- SIMPLIFIED SOURCE FILE SELECTION ---
             # Determine the primary source file being tested (e.g., test_main.c -> main.c)
             source_under_test = test_name.replace('test_', '') + '.c'
 
-            # Find all functions stubbed in the test file
-            stubbed_functions = self._find_stubbed_functions(os.path.join(self.output_dir, 'tests', test_file))
-            
-            # Determine which source files provide the stubbed functions
-            source_files_with_stubs = set()
-            for func in stubbed_functions:
-                for src_file in source_files:
-                    # A simple check, can be improved with more robust parsing
-                    with open(os.path.join(self.output_dir, 'src', src_file), 'r', errors='ignore') as f:
-                        if func in f.read():
-                            source_files_with_stubs.add(src_file)
+            # For unit testing, only include the specific source file being tested
+            # The test file should contain all necessary stubs for dependencies
+            test_sources = []
 
-            # Link only the necessary source files: all sources MINUS the ones that are stubbed
-            test_sources = [os.path.join('src', s) for s in source_files if s not in source_files_with_stubs]
-            
-            # Always include the source file being tested (unless it's stubbed, which it shouldn't be)
+            # Include the primary source file if it exists
             primary_source = os.path.join('src', source_under_test)
-            if primary_source not in test_sources and os.path.exists(os.path.join(self.output_dir, 'src', source_under_test)):
+            if os.path.exists(os.path.join(self.output_dir, 'src', source_under_test)):
                 test_sources.append(primary_source)
-
 
             # Convert backslashes to forward slashes for CMake compatibility
             test_sources = [src.replace('\\', '/') for src in test_sources]
