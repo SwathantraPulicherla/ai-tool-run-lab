@@ -72,9 +72,8 @@ class AITestRunner:
             test_file = self.tests_dir / f"{base_name}.c"
 
             if test_file.exists():
-                # Return just the base name without .c extension
-                test_name = test_file.stem
-                compilable_tests.append(test_name)
+                # Return the full Path object for file operations
+                compilable_tests.append(test_file)
                 print(f"✅ Found compilable test: {test_file.name}")
             else:
                 print(f"⚠️  Test file not found: {test_file.name}")

@@ -43,8 +43,9 @@ class TestAITestRunner:
         tests = runner.find_compilable_tests()
 
         assert len(tests) == 2
-        assert 'test1' in tests
-        assert 'test2' in tests
+        # Tests should now be Path objects, not strings
+        assert tests[0].stem in ['test1', 'test2']
+        assert tests[1].stem in ['test1', 'test2']
 
     @patch('ai_test_runner.cli.subprocess.run')
     def test_build_tests_success(self, mock_subprocess):
